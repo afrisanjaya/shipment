@@ -1,0 +1,170 @@
+{
+  "title": "Cold Chain Monitor",
+  "tags": ["supply-chain", "cold-chain", "compliance"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Shipments by Cold Chain Status",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT s.status, count(*) AS count FROM shipments s JOIN warehouses w ON s.warehouse_id = w.id WHERE w.warehouse_type = 'COLD_STORAGE' GROUP BY s.status ORDER BY count DESC",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "On-Time Delivery Rate",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 85 },
+              { "color": "green", "value": 95 }
+            ]
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'DELIVERED') / NULLIF(COUNT(*), 0), 1) AS on_time_pct FROM shipments WHERE created_at > NOW() - INTERVAL '7 days'",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Avg Delivery Time (hours)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT ROUND(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600), 1) AS avg_hours FROM shipments WHERE status = 'DELIVERED' AND updated_at > NOW() - INTERVAL '7 days'",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Warehouse Capacity Usage",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 8, "x": 12, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT w.name, ROUND(100.0 * count(s.id) / NULLIF(w.capacity, 0), 1) AS utilization_pct FROM warehouses w LEFT JOIN shipments s ON s.warehouse_id = w.id AND s.status NOT IN ('DELIVERED', 'CANCELLED') GROUP BY w.name, w.capacity",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "Shipments by Priority",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT COALESCE(priority, 'NORMAL') AS priority, count(*) AS count FROM shipments WHERE status NOT IN ('DELIVERED', 'CANCELLED') GROUP BY priority ORDER BY count DESC",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "Daily Shipment Volume (7 days)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "axisLabel": "shipments",
+            "fillOpacity": 25,
+            "lineWidth": 2,
+            "showPoints": "always"
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT date_trunc('day', created_at) AS day, count(*) AS shipments FROM shipments WHERE created_at > NOW() - INTERVAL '7 days' GROUP BY day ORDER BY day",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "Service Health",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 12, "y": 14 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "showPoints": "auto"
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "expr": "up",
+        "legendFormat": "{{job}}",
+        "refId": "A"
+      }]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}

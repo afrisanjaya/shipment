@@ -1,0 +1,10 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/logistics_db
+
+dynamodb:
+  endpoint: ${DYNAMODB_ENDPOINT:}
+  region: ${AWS_REGION}

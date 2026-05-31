@@ -1,0 +1,25 @@
+{
+  "name": "wallet-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres-wallet",
+    "database.port": "5432",
+    "database.user": "${POSTGRES_WALLET_USER}",
+    "database.password": "${POSTGRES_WALLET_PASSWORD}",
+    "database.dbname": "wallet_db",
+    "topic.prefix": "wallet-db",
+    "table.include.list": "public.outbox_events",
+    "plugin.name": "pgoutput",
+    "publication.autocreate.mode": "filtered",
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.table.field.event.id": "id",
+    "transforms.outbox.table.field.event.key": "aggregate_id",
+    "transforms.outbox.table.field.event.payload": "payload",
+    "transforms.outbox.table.field.event.type": "event_type",
+    "transforms.outbox.route.by.field": "aggregate_type",
+    "transforms.outbox.route.topic.replacement": "${routedByValue}",
+    "tombstones.on.delete": "false",
+    "heartbeat.interval.ms": "5000"
+  }
+}

@@ -1,0 +1,448 @@
+﻿version: "3.9"
+name: Shipment
+
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: Shipment-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-Shipment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shipment_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../postgres-data:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    command: >
+      postgres
+        -c wal_level=logical
+        -c max_wal_senders=4
+        -c max_replication_slots=4
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-Shipment}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: Shipment-postgres-exporter
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-Shipment}:${POSTGRES_PASSWORD:-Shipment_pass}@postgres:5432/?sslmode=disable
+    ports:
+      - "9187:9187"
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: Shipment-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: Shipment-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: Shipment-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ../kafka/init-topics.sh:/init-topics.sh:ro
+    entrypoint: ["/bin/bash", "/init-topics.sh"]
+    networks:
+      - Shipment-net
+    restart: "no"
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: Shipment-kafka-exporter
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - --kafka.server=kafka:9092
+    ports:
+      - "9308:9308"
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  debezium:
+    image: debezium/connect:2.7.0.Final
+    container_name: Shipment-debezium
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: debezium-connect-group
+      JMXPORT: 1976
+      JMXHOST: 0.0.0.0
+      CONFIG_STORAGE_TOPIC: debezium-configs
+      OFFSET_STORAGE_TOPIC: debezium-offsets
+      STATUS_STORAGE_TOPIC: debezium-status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    ports:
+      - "8084:8083"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: Shipment-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  debezium-init:
+    image: curlimages/curl:8.8.0
+    container_name: Shipment-debezium-init
+    depends_on:
+      debezium:
+        condition: service_healthy
+    environment:
+      DEBEZIUM_CONNECT_URL: http://debezium:8083
+      POSTGRES_USER: ${POSTGRES_USER:-Shipment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Shipment_pass}
+    volumes:
+      - ../debezium:/etc/debezium/templates:ro
+      - ../debezium/register-connectors.sh:/register-connectors.sh:ro
+    entrypoint: ["/bin/sh", "/register-connectors.sh"]
+    restart: "no"
+    networks:
+      - Shipment-net
+
+  debezium-jmx-exporter:
+    image: sscaling/jmx-prometheus-exporter:latest
+    container_name: Shipment-debezium-jmx-exporter
+    depends_on:
+      debezium:
+        condition: service_healthy
+    environment:
+      SERVICE_PORT: 9404
+      CONFIG_YML: /config/debezium-exporter.yml
+    volumes:
+      - ../jmx/debezium-exporter.yml:/config/debezium-exporter.yml:ro
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: Shipment-redis-exporter
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "9121:9121"
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: Shipment-loki
+    volumes:
+      - ../loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: Shipment-promtail
+    volumes:
+      - ../loki/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: Shipment-prometheus
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: Shipment-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  logistics-service:
+    build:
+      context: ../../services/logistics-service
+      dockerfile: Dockerfile
+    container_name: Shipment-logistics-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/logistics_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-Shipment}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-Shipment_pass}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  billing-service:
+    build:
+      context: ../../services/billing-service
+      dockerfile: Dockerfile
+    container_name: Shipment-billing-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/wallet_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-Shipment}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-Shipment_pass}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      BILLING_SQS_ENABLED: ${BILLING_SQS_ENABLED:-false}
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  ai-assistant-service:
+    build:
+      context: ../../services/ai-assistant-service
+      dockerfile: Dockerfile
+    container_name: Shipment-ai-assistant-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      BEDROCK_AGENT_ID: ${BEDROCK_AGENT_ID}
+      BEDROCK_AGENT_ALIAS_ID: ${BEDROCK_AGENT_ALIAS_ID}
+      BEDROCK_KB_ID: ${BEDROCK_KB_ID}
+      BEDROCK_S3VECTOR_BUCKET_ARN: ${BEDROCK_S3VECTOR_BUCKET_ARN}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      LOGISTICS_SERVICE_URL: http://logistics-service:8081
+      DATA_PLATFORM_SERVICE_URL: ${DATA_PLATFORM_SERVICE_URL:-http://data-platform-service:8085}
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  data-platform-service:
+    build:
+      context: ../../services/data-platform-service
+      dockerfile: Dockerfile
+    container_name: Shipment-data-platform-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/platform_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-Shipment}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-Shipment_pass}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      S3_BUCKET: Shipment-logistics-catalog
+      BEDROCK_KB_ID: ${BEDROCK_KB_ID}
+      LOGISTICS_SERVICE_URL: http://logistics-service:8081
+      BILLING_SERVICE_URL: http://billing-service:8082
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  gps-simulator:
+    build:
+      context: ../../gps-simulator
+      dockerfile: Dockerfile
+    container_name: Shipment-gps-simulator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      NUM_SHIPMENTS: "10"
+      COLD_CHAIN_RATIO: "0.3"
+      GPS_INTERVAL_SEC: "30"
+      SENSOR_INTERVAL_SEC: "60"
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+  scheduler-service:
+    build:
+      context: ../../services/scheduler-service
+      dockerfile: Dockerfile
+    container_name: Shipment-scheduler-service
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BROKERS: kafka:9092
+      HTTP_PORT: 8090
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+    networks:
+      - Shipment-net
+
+networks:
+  Shipment-net:
+    driver: bridge
+    name: Shipment-net
+
+volumes:
+  redis-data:
+  grafana-data:
+  loki-data:

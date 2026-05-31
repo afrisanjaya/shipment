@@ -1,0 +1,50 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "logistics-service"
+    static_configs:
+      - targets: ["logistics-service:8081"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: "billing-service"
+    static_configs:
+      - targets: ["billing-service:8082"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: "ai-assistant-service"
+    static_configs:
+      - targets: ["ai-assistant-service:8083"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: "data-platform-service"
+    static_configs:
+      - targets: ["data-platform-service:8085"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: "scheduler-service"
+    static_configs:
+      - targets: ["scheduler-service:8090"]
+    metrics_path: /metrics
+
+  - job_name: "debezium"
+    static_configs:
+      - targets: ["debezium-jmx-exporter:9404"]
+    metrics_path: /metrics
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: "kafka"
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

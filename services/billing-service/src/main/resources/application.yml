@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: billing-service
+  profiles:
+    active: local
+  datasource:
+    url: jdbc:postgresql://localhost:5432/wallet_db
+    username: ${SPRING_DATASOURCE_USERNAME:Shipment}
+    password: ${SPRING_DATASOURCE_PASSWORD:Shipment_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+server:
+  port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+wallet:
+  sqs:
+    enabled: false
+    endpoint: ${AWS_SQS_ENDPOINT:}
+    region: ${AWS_REGION}
+    access-key-id: ${AWS_ACCESS_KEY_ID}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+    queue-name: wallet-transactions.fifo
+    poll-delay-ms: 1000
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

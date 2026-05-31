@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: data-platform-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/platform_db
+    username: ${SPRING_DATASOURCE_USERNAME:Shipment}
+    password: ${SPRING_DATASOURCE_PASSWORD:Shipment_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: localhost:29092
+    consumer:
+      group-id: dataplatform-consumer
+      auto-offset-reset: earliest
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+app:
+  upload:
+    storage-dir: ./uploads
+
+server:
+  port: 8085
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+bedrock:
+  kb:
+    id: ${BEDROCK_KB_ID:}
+
+s3:
+  bucket: ${S3_BUCKET:Shipment-logistics-catalog}
+  endpoint: ${S3_ENDPOINT:}
+  region: ${AWS_REGION}
+  access-key-id: ${AWS_ACCESS_KEY_ID:}
+  secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

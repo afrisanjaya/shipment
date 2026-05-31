@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: logistics-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/logistics_db
+    username: ${SPRING_DATASOURCE_USERNAME:Shipment}
+    password: ${SPRING_DATASOURCE_PASSWORD:Shipment_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+dynamodb:
+  endpoint: ${DYNAMODB_ENDPOINT:}
+  region: ${AWS_REGION}
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+jwt:
+  secret: ${JWT_SECRET:Shipment-jwt-secret-key-2026-minimum-32-chars}
+  expiration-ms: ${JWT_EXPIRATION_MS:3600000}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

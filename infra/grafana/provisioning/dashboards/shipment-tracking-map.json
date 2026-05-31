@@ -1,0 +1,185 @@
+{
+  "title": "Live Shipment Tracking",
+  "tags": ["supply-chain", "logistics", "tracking"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Shipments by Warehouse",
+      "type": "bargauge",
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT w.name AS warehouse, count(s.id) AS shipments FROM warehouses w LEFT JOIN shipments s ON s.warehouse_id = w.id AND s.status NOT IN ('DELIVERED', 'CANCELLED') GROUP BY w.name ORDER BY shipments DESC",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "Active Shipments",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT count(*) FROM shipments WHERE status NOT IN ('DELIVERED', 'CANCELLED')",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Dispatched / In Transit",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "orange", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT count(*) FROM shipments WHERE status IN ('DISPATCHED', 'IN_TRANSIT')",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Delivered (last 24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT count(*) FROM shipments WHERE status = 'DELIVERED' AND updated_at > NOW() - INTERVAL '24 hours'",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "Shipments by Status",
+      "type": "piechart",
+      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT status, count(*) AS count FROM shipments GROUP BY status ORDER BY count DESC",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "Recent Shipments",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "cellOptions": { "type": "auto" } }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT s.id, w.name AS warehouse, s.status, s.created_at, s.updated_at FROM shipments s JOIN warehouses w ON s.warehouse_id = w.id ORDER BY s.updated_at DESC LIMIT 10",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "Shipment Events (CDC Outbox)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "event_type" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }
+            ]
+          }
+        ]
+      },
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "postgres-logistics" },
+        "format": "table",
+        "rawSql": "SELECT id, aggregate_id AS shipment_id, event_type, status, created_at FROM outbox_events ORDER BY created_at DESC LIMIT 50",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 8,
+      "title": "Kafka Consumer Lag (logistics)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 16, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "showPoints": "auto"
+          }
+        }
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "expr": "kafka_consumer_fetch_manager_records_lag",
+        "legendFormat": "{{topic}}",
+        "refId": "A"
+      }]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}

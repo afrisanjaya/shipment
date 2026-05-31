@@ -1,0 +1,7 @@
+startDelaySeconds: 0
+hostPort: debezium:1976
+ssl: false
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+rules:
+  - pattern: ".*"

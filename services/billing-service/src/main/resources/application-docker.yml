@@ -1,0 +1,16 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/wallet_db
+
+billing:
+  sqs:
+    enabled: ${BILLING_SQS_ENABLED:false}
+    endpoint: ${AWS_SQS_ENDPOINT:}
+    region: ${AWS_REGION}
+    access-key-id: ${AWS_ACCESS_KEY_ID}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+    queue-name: wallet-transactions.fifo
+    poll-delay-ms: 1000

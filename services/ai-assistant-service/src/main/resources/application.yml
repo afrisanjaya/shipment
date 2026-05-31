@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: ai-assistant-service
+
+server:
+  port: 8083
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+bedrock:
+  agent:
+    id: ${BEDROCK_AGENT_ID}
+    alias-id: ${BEDROCK_AGENT_ALIAS_ID}
+  kb:
+    id: ${BEDROCK_KB_ID}
+  s3vector:
+    bucket-arn: ${BEDROCK_S3VECTOR_BUCKET_ARN}
+    region: ${AWS_REGION}
+
+logistics:
+  service:
+    url: ${LOGISTICS_SERVICE_URL:http://localhost:8081}
+
+data-platform:
+  service:
+    url: ${DATA_PLATFORM_SERVICE_URL:http://localhost:8084}
+
+kb:
+  prompt:
+    template: |
+      You are a logistics knowledge assistant. Answer the question based only on the search results below.
+      Format the response naturally in the same language as the question.
+      If the search results don't contain the answer, say so honestly.
+
+      Search results:
+      $search_results$
+
+      Question: $query$
+
+      Answer:
