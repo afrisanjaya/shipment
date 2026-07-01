@@ -57,7 +57,9 @@ REMINDER.md
 angry.md
 *.exe
 *.dot
+!infra/cdk/shipment_aws_architecture.dot
 *.png
+!infra/cdk/shipment_aws_architecture.png
 DESTROY_GUIDE.md
 test-update-agent.ps1
 iam-bedrock-agent-policy.json

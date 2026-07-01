@@ -22,7 +22,7 @@ from diagrams.programming.language import Go, Java, Python
 
 graph_attr = {
     "fontsize": "18",
-    "bgcolor": "#ffffff",
+    "bgcolor": "white",
     "pad": "0.5",
     "splines": "polyline",
     "nodesep": "0.8",
